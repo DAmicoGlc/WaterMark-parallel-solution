@@ -15,7 +15,15 @@
 using namespace std;
 using namespace cimg_library;
 
+auto startGather=std::chrono::high_resolution_clock::now();
+
 vector<long> workerTime;
+
+vector<long> popTime;
+
+vector<int> vecBlackNumber;
+
+long gatherTime;
 
 // variable to set the interarrival time of the stream
 int interarrival_time;
@@ -51,40 +59,35 @@ typedef struct {
 } workerInfo, *workerInfoPtr;
 
 // queue from scatter to worker for the information about chunks
-queue<tuple<unsigned char *,CImg<unsigned char> *,int> >  *workerQueue;
+queue<pair<unsigned char *,CImg<unsigned char> *> >  *workerQueue;
 
 // queue from workers to gather
-queue<pair<int, CImg<unsigned char> *> > *gatherQueue;
+queue<pair<int, CImg<unsigned char> *> > gatherQueue;
 
 /* SCATTER
 INPUT:
-	- number of workers per map
-	- number of map
+	- number of workers
 	- vector of pointer to the array of pixels of the images
 	- vector of pointer to the images
 Calculate the information about the partition of the image.
 Only once push information to worker.
 For each images:
-	Calculate the map which need to work (round robin)
 	Push the pointer to the pixels array and the pointer to the image in each queues waiting 
 		eventually a fixed time to emulate the inter-arrival time othe stream 
 
 
 Push a null in each queues to propagate the EOF
 */
-void scatter(int nWorkerMap,int nmbMap,vector<unsigned char *> dataImgVector,vector<CImg<unsigned char> *> imgVector) {
-
-	int mapIndex=0;
+void scatter(int nw,vector<unsigned char *> dataImgVector,vector<CImg<unsigned char> *> imgVector) {
 
 	// loop on the images vector
 	for ( int j=0 ; j<imgVector.size() ; j++ ) {
 		active_delay(interarrival_time);
 
-		mapIndex=j%nmbMap;
-
 		// loop on workers
-		for ( int i=0 ; i<nWorkerMap ; i++ ) 
-			workerQueue[mapIndex*nWorkerMap+i].push( make_tuple(dataImgVector[j],imgVector[j],j) );
+		for ( int i=0 ; i<nw ; i++ ) 
+			workerQueue[i].push( make_pair(dataImgVector[j],imgVector[j]) );
+		
 
 	}
 
@@ -92,9 +95,9 @@ void scatter(int nWorkerMap,int nmbMap,vector<unsigned char *> dataImgVector,vec
 	unsigned char *eofData = NULL;
 
 	// push th end of stream
-	for (int i = 0; i<nWorkerMap*nmbMap ; i++ ) 
-		workerQueue[i].push( make_tuple(eofData,eofImage,0) );
-	
+	for (int i = 0; i < nw; i++) {
+		workerQueue[i].push( make_pair(eofData,eofImage) );
+	}
 
 	return;
   
@@ -104,39 +107,29 @@ void scatter(int nWorkerMap,int nmbMap,vector<unsigned char *> dataImgVector,vec
 INPUT:
 	- index is needed to associate one worker to his own queue
 	- infoChunk, information about its own chunk
-	- mapID, is neede to identify the map associated to the worker
 Pop image from his own queue and process it
 Push the number of the image processed and its pointer, the numbeer is needed to identify that image
 */
-void worker(int index,workerInfoPtr infoChunk,int mapID) {
+void worker(int index,workerInfoPtr infoChunk) {
 
 	auto startWorker = std::chrono::high_resolution_clock::now();
 
 	int imageCounter=0;
 
-	tuple<unsigned char *, CImg<unsigned char> *,int> ptrTuple;
+	int blackNumber=0;
+
+	pair<unsigned char *, CImg<unsigned char> *> ptrPair;
 
   	unsigned char *ptrDataImg;
 
+  	ptrPair = workerQueue[index].pop();
+
+	ptrDataImg = ptrPair.first;
+
 	// thread have to work untill it find the end of stream (NULL)
-	while(true) {
+	while(ptrDataImg!=NULL) {
 
-		ptrTuple = workerQueue[index].pop();
-
-		ptrDataImg = get<0>(ptrTuple);
-
-		if ( ptrDataImg==NULL ) {
-
-			// propagate EOS
-			gatherQueue[mapID].push( make_pair(0,get<1>(ptrTuple)) );
-
-			auto elapsedWorker = std::chrono::high_resolution_clock::now() - startWorker;
-		    auto usecWorker    = std::chrono::duration_cast<std::chrono::microseconds>(elapsedWorker).count();
-
-		    workerTime[index]=usecWorker;
-
-			return;
-		}
+		auto startPop = std::chrono::high_resolution_clock::now();
 
 	  	int greyValue, avgGreyValue, redOff, greenOff, blueOff, markOff;
 
@@ -149,13 +142,17 @@ void worker(int index,workerInfoPtr infoChunk,int mapID) {
     		// the marker could be not completely B&W, so use a threshold to identify black pixels
 			if ( *(infoChunk->ptrMarker + markOff)  < 50 ) 
 			{
+				blackNumber++;
+
 				// RGB offset to know each value of the three colors
 				redOff = markOff*sizeof(unsigned char);
 				greenOff = (markOff + infoChunk->imgNmbPx ) * sizeof(unsigned char);
 				blueOff = (markOff + 2*( infoChunk->imgNmbPx ) ) * sizeof(unsigned char);
 
 
-				greyValue = ( *( ptrDataImg + redOff ) + *( ptrDataImg + greenOff ) + *( ptrDataImg + blueOff ) )/3;
+				greyValue = ( *( ptrDataImg + redOff ) +
+				 *( ptrDataImg + greenOff ) +
+				 *( ptrDataImg + blueOff ) )/3;
 
 				avgGreyValue = (greyValue+*(infoChunk->ptrMarker + markOff))/2;
 
@@ -166,12 +163,36 @@ void worker(int index,workerInfoPtr infoChunk,int mapID) {
 			}
 	    }
 
+	    auto elapsedPop = std::chrono::high_resolution_clock::now() - startPop;
+    	auto usecPop    = std::chrono::duration_cast<std::chrono::microseconds>(elapsedPop).count();
+
+    	popTime[index]+=usecPop;
+
 	    // propagate the result
-	    gatherQueue[mapID].push( make_pair(get<2>(ptrTuple),get<1>(ptrTuple)) );
+	    gatherQueue.push( make_pair(imageCounter,ptrPair.second) );
 
 	    imageCounter++;
 
+	    ptrPair = workerQueue[index].pop();
+
+	    ptrDataImg = ptrPair.first;
+
 	}
+
+	// propagate EOS
+	gatherQueue.push( make_pair(0,ptrPair.second) );
+
+	// free memory
+	delete infoChunk;
+
+	auto elapsedWorker = std::chrono::high_resolution_clock::now() - startWorker;
+    auto usecWorker    = std::chrono::duration_cast<std::chrono::microseconds>(elapsedWorker).count();
+
+    workerTime[index]=usecWorker;
+
+    vecBlackNumber[index]=blackNumber;
+
+   	startGather=std::chrono::high_resolution_clock::now();
 
 	return;
 }
@@ -179,7 +200,6 @@ void worker(int index,workerInfoPtr infoChunk,int mapID) {
 /* GATHER
 INPUT:
 	- number of worker
-	- mapID, is neede to identify the map associated to the gather
 Create a map<int,int> (eg an hashtable)
 Pop the result from the workers,
 	if the pointer is NULL
@@ -197,7 +217,7 @@ Pop the result from the workers,
 This method guaratee to not lose parts of image different between what gather expect
 (eg one worker is so fast to compute his part of second image before another worker finish his part of the first image)
 */
-void gather(int nw,int mapID) {
+void gather(int nw) {
 
 	map< int, int> pool;
 
@@ -210,11 +230,10 @@ void gather(int nw,int mapID) {
 
 	int imageId;
 	int nullNmb=0;
-	int imgNumber=0;
 
 	while(true) {
 
-		workerResult = gatherQueue[mapID].pop();
+		workerResult = gatherQueue.pop();
 
 		ptrImg = workerResult.second;
 
@@ -222,7 +241,9 @@ void gather(int nw,int mapID) {
 			// count number of null
 			nullNmb++;
 			if(nullNmb==nw) {
-				printOut("Map: "+to_string(mapID)+"- Process: "+to_string(imgNumber)+" images!");
+				auto elapsed = std::chrono::high_resolution_clock::now() - startGather;
+    			auto usec    = std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
+    			gatherTime=usec;
 				return;
 			}
 		}
@@ -230,6 +251,9 @@ void gather(int nw,int mapID) {
 			imageId = workerResult.first;
 
 			if ( pool.count(imageId) == 1 || nw==1 ) {
+
+				if (nw==1)
+					pool.insert(make_pair(imageId,0));
 				
 				if ( pool[imageId] == nw-1 ) {
 
@@ -237,12 +261,9 @@ void gather(int nw,int mapID) {
 
 					path +=to_string(imageId)+".jpg";
 
-
 					//ptrImg->save(path.c_str());
 
 					path="markedImageMap/img_";
-
-					imgNumber++;
 
 				}
 				else {
@@ -255,7 +276,6 @@ void gather(int nw,int mapID) {
 		}
 	}
 
-
 	return;
 }
 
@@ -266,8 +286,8 @@ USAGE:
 		- water mark name with extension						->markName
 		- number of worker 										->nw
 	Optional:
-		- image number 						(default:100)		->imageNumber
 		- inter-arrival time of the stream 	(default:10us)		->interarrival_time
+		- image number 						(default:100)		->imageNumber
 List the existing file with ".jpg" extension in the input folder.
 Load sequentially images from the list of file.
 Load nw marker for the workers.
@@ -290,39 +310,15 @@ int main(int argc, char const *argv[])
 	string markName = argv[2];
 
 	if ( argc>=5 )
-		imageNumber = atoi(argv[4]);
-	else
-		imageNumber = 100;
-
-	if ( argc==6 )
-		interarrival_time = atoi(argv[5]);
+		interarrival_time = atoi(argv[4]);
 	else
 		interarrival_time = 10;
 
+	if ( argc==6 )
+		imageNumber = atoi(argv[5]);
+	else
+		imageNumber = 100;
 
-	if (imageNumber==1) {
-		cout << "Si prega di utilizzare più di una immagine!" << endl;
-		return 0;
-	}
-
-
-	int nmbMap=1;
-	int nmbProbMap;
-	int nWorkerMap=nw;
-
-	if (nWorkerMap>8) {
-		nmbMap*=nWorkerMap/8;
-		nWorkerMap = 8;
-	}
-
-	if ( nmbMap*2 > imageNumber ) {
-		do {
-			nWorkerMap*=2;
-			nmbMap/=2;
-		} while( nmbMap*2 > imageNumber );
-	}	
-
-	cout << "Numero map: " << nmbMap << " Numero worker per map: " << nWorkerMap << endl;
 
 	// list file in input folder
 	DIR *dir;
@@ -331,8 +327,6 @@ int main(int argc, char const *argv[])
 	vector<string> imgStream;
 	vector<unsigned char *> dataImgVector;
 	vector<CImg<unsigned char> *> imgVector;
-	vector<unsigned char *> dataMarkVector;
-	vector<CImg<unsigned char> *> markVector;
 
 	if ((dir = opendir (inputFolder.c_str())) != NULL) {
 	  /* print all the files and directories within directory */
@@ -365,63 +359,40 @@ int main(int argc, char const *argv[])
 
 	}
 
+	// load water mark
 	CImg<unsigned char> *mark = new CImg<unsigned char>();
 	mark->load(markName.c_str());
-	markVector.push_back(mark);
-	dataMarkVector.push_back(mark->data()); 	
-
-	// load image form folder
-	for ( int j=1 ; j<nmbMap ; j++ ) {
-
-		CImg<unsigned char> *mark = new CImg<unsigned char>((*markVector[0]));
-
-		markVector.push_back(mark);
-
-		dataMarkVector.push_back(mark->data());
-
-	}
 
 	auto startScatter   = std::chrono::high_resolution_clock::now();
 
-	vector<vector<workerInfoPtr>> infoVector;
+	vector<workerInfoPtr> infoVector;
 
-	for (int i = 0; i < nmbMap; ++i) {
-		vector<workerInfoPtr> v;
-		infoVector.push_back(v);
-	}
-	
-
-	int markHeight = markVector[0]->height();
-	int markWidth = markVector[0]->width();
+	unsigned char *ptrMark = mark->data(); 
+	int markHeight = mark->height();
+	int markWidth = mark->width();
 	int offset = 0;
 	int imgNmbPx ,chunksRow ,lastRow;
 	int rowAssigned = 0;
 
 	imgNmbPx = markHeight*markWidth;
 
-	for (int k = 0; k < nmbMap; ++k)
-	{
-		chunksRow = (markHeight/nWorkerMap)+1;
-		lastRow = markHeight%nWorkerMap;
-		rowAssigned=0;
-		offset = 0;
+	chunksRow = (markHeight/nw)+1;
+	lastRow = markHeight%nw;
 
-		// loop on workers
-		for ( int i=0 ; i<nWorkerMap ; i++ ) {
+	// loop on workers
+	for ( int i=0 ; i<nw ; i++ ) {
 
-			// last row say me how many row exceed from the split, when i assigned all of it i decrease the number of row to give to worker
-			if ( lastRow == i )
-				chunksRow=chunksRow-1;
+		// last row say me how many row exceed from the split, when i assigned all of it i decrease the number of row to give to worker
+		if ( lastRow == i )
+			chunksRow=chunksRow-1;
 
-			offset = rowAssigned*markWidth;
+		offset = rowAssigned*markWidth;
 
-			workerInfoPtr workerParameter = new workerInfo{ dataMarkVector[k], imgNmbPx, chunksRow, markWidth, offset };
+		workerInfoPtr workerParameter = new workerInfo{ ptrMark, imgNmbPx, chunksRow, markWidth, offset };
 
-			rowAssigned +=chunksRow;
+		rowAssigned +=chunksRow;
 
-			infoVector[k].push_back(workerParameter);
-
-		}
+		infoVector.push_back(workerParameter);
 
 	}
 
@@ -429,28 +400,30 @@ int main(int argc, char const *argv[])
     auto usecScatter    = std::chrono::duration_cast<std::chrono::microseconds>(elapsedScatter).count();
 
 	workerTime.resize(nw,0);
-	int max=0;
-	int min=INT_MAX;
+	long max=0;
+	long min=INT_MAX;
+	popTime.resize(nw,0);
+	long maxPop=0;
+	int maxIndex;
+	long maxFor;
+	vecBlackNumber.resize(nw,0);
+	long minIndex;
 
 	auto start   = std::chrono::high_resolution_clock::now();
 
 	// allocate memory for the worker queues
-	workerQueue = new queue<tuple<unsigned char *,CImg<unsigned char> *,int> >[nw];
-
-	gatherQueue = new queue<pair<int, CImg<unsigned char> *> >[nmbMap];
+	workerQueue = new queue<pair<unsigned char *,CImg<unsigned char> *> >[nw];
 
 
 	//Create the scatter and gather threads
-	thread scatterThread(scatter,nWorkerMap,nmbMap,dataImgVector,imgVector);
+	thread scatterThread(scatter,nw,dataImgVector,imgVector);
+	thread gatherThread(gather, nw);
 
 	vector<thread> workers;
-	vector<thread> gathers;
 
-	for (int i = 0; i < nmbMap; ++i) {
-		gathers.push_back(thread(gather,nWorkerMap,i));
-		for (int j = 0; j < nWorkerMap; ++j) 
-			workers.push_back(thread(worker, (j+nWorkerMap*i), infoVector[i][j],i));
-	}
+	//Create worker threads
+	for (int i = 0; i < nw; ++i) 
+		workers.push_back(thread(worker, i, infoVector[i]));
 
 	// Join threads togheter
 	scatterThread.join();
@@ -458,35 +431,49 @@ int main(int argc, char const *argv[])
 	for (int i = 0; i < nw; ++i) 
 		workers[i].join();
 
-	for (int i = 0; i < nmbMap; ++i)
-		gathers[i].join();
-
+	gatherThread.join();
+	
 	auto elapsed = std::chrono::high_resolution_clock::now() - start;
     auto usec    = std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
 
-    for (int i = 0; i < nmbMap; ++i)
-		delete markVector[i];
-
-
   	for (int i = 0; i < nw; ++i) {
-    	if (max<workerTime[i])
+    	if (max<workerTime[i]) {
     		max=workerTime[i];
+    		maxIndex=i;
+    	}
     }
     for (int i = 0; i < nw; ++i) {
-    	if (min>workerTime[i])
+    	if (min>workerTime[i]) {
     		min=workerTime[i];
+    		indexBlack=i;
+    	}
     }
+
+    for (int i = 0; i < nw; ++i) {
+    	if (maxPop<workerTime[i]-popTime[i])
+    		maxPop=workerTime[i]-popTime[i];
+    }
+
+    delete mark;
+
+	for (int i = 0; i < imgVector.size(); ++i)
+		delete imgVector[i];
+
+	maxFor=workerTime[maxIndex]-popTime[maxIndex];
 
   	cout << "Parallel time: " << usec << "us, for " << imageNumber << " images, using " << nw << " workers!" << endl;
   	cout << "Worker max time: " << max << "us, for " << imageNumber << " images, using " << nw << " workers!" << endl;
   	cout << "Worker min time: " << min << "us, for " << imageNumber << " images, using " << nw << " workers!" << endl;
   	cout << "Overhead time: " << usec-max << "us, for " << imageNumber << " images, using " << nw << " workers!" << endl;
   	cout << "Overhead Scattering time: " << usecScatter << "us, using " << nw << " workers!" << endl;
+  	cout << "Overhead Gathering time: " << gatherTime << "us, using " << nw << " workers!" << endl;
+  	cout << "Queue max time: " << maxPop << "us, for " << imageNumber << " images, using " << nw << " workers!" << endl;
+
 
   	std::ofstream outfile;
 
 	outfile.open("testTime.txt", std::ios_base::app);
-  	outfile << nw << " " << usec << " " << max << " " << min << " " << usec-max << " " << usecScatter << " " << imageNumber << endl; 
+  	outfile << nw << " " << usec << " " << max << " " << min << " " << usec-max << " " << usecScatter << " " << gatherTime << " " << maxPop << " " << maxFor << " " << vecBlackNumber[maxIndex] << " " << vecBlackNumber[minIndex] << " " << imageNumber << endl; 
 
 
 	return 0;

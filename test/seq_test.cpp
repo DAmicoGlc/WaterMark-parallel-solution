@@ -137,12 +137,12 @@ int main(int argc, char const *argv[])
 	}
 
 	auto elapsed = std::chrono::high_resolution_clock::now() - start;
-    auto msec    = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+    auto usec    = std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
 
     for (int i = 0; i < imageNumber; ++i)
     	delete imageToMark[i];
 
-  	cout << "Sequential time: " << msec << "ms" << " for " << imageNumber << " images!" << endl;
+  	cout << "Sequential time: " << usec << "us" << " for " << imageNumber << " images!" << endl;
 
   	return 0;
 
