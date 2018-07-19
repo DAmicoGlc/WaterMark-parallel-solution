@@ -137,7 +137,7 @@ void worker(int index,workerInfoPtr infoChunk) {
 	    for ( int y=0 ; y < infoChunk->chunksRow*infoChunk->markWidth ; y++) {
 
 	    	// offset to identify the pixels
-    		markOff = (infoChunk->offset+y);
+    		markOff = (infoChunk->offset+(y)* sizeof(unsigned char));
 
     		// the marker could be not completely B&W, so use a threshold to identify black pixels
 			if ( *(infoChunk->ptrMarker + markOff)  < 50 ) 
@@ -342,16 +342,19 @@ int main(int argc, char const *argv[])
 	  perror ("");
 	  return EXIT_FAILURE;
 	}
-
+/*
 	CImg<unsigned char> *image = new CImg<unsigned char>();     // modify to get all image in a folder
 	image->load(imgStream[0].c_str());
 	imgVector.push_back(image);
 	dataImgVector.push_back(image->data()); 	
-
+*/
 	// load image form folder
 	for ( int j=1 ; j<imageNumber ; j++ ) {
 
-		CImg<unsigned char> *image = new CImg<unsigned char>((*imgVector[0]));
+//		CImg<unsigned char> *image = new CImg<unsigned char>((*imgVector[0]));
+
+		CImg<unsigned char> *image = new CImg<unsigned char>();
+		image->load(imgStream[0].c_str());
 
 		imgVector.push_back(image);
 
@@ -407,7 +410,8 @@ int main(int argc, char const *argv[])
 	int maxIndex;
 	long maxFor;
 	vecBlackNumber.resize(nw,0);
-	long minIndex;
+	int minIndex;
+	int indexBlack;
 
 	auto start   = std::chrono::high_resolution_clock::now();
 

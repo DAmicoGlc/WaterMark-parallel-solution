@@ -105,7 +105,7 @@ void worker(CImg<unsigned char> * markImg,int index) {
 		for ( int x = 0 ; x < pixNmb ; x++ ) {
 
 			// the marker could be not completely B&W, so use a threshold to identify black pixels
-			if ( *(mark+ x ) < 50 ) 
+			if ( *(mark+ (x)* sizeof(unsigned char) ) < 50 ) 
 			{
 				greyValue = (*(imageInfo->image+ (x)* sizeof(unsigned char) ) + *(imageInfo->image+ (x + pixNmb)* sizeof(unsigned char) ) 
 					+ *(imageInfo->image+ (x + pixNmb*2)* sizeof(unsigned char) ) )/3;
