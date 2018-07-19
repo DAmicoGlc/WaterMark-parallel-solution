@@ -137,15 +137,15 @@ USAGE:
 		- water mark name with extension						->markName
 		- number of worker 										->nw
 	Optional:
-		- inter-arrival time of the stream 	(default:10us)		->interarrival_time
 		- image number 						(default:100)		->imageNumber
+		- inter-arrival time of the stream 	(default:10us)		->interarrival_time
 List the existing file with ".jpg" extension in the input folder.
 Load sequentially images from the list of file.
 Load nw marker for the workers.
 Create the emitter thread and "nw" worker threads and join them.
 
 For test purposes:
-	- in order to save memory in the example folder there is only one image which is loaded "imageNumber" times;
+	- in order to save memory in the example folder there is only one image which is loaded once and copied "imageNumber" times;
 */
 int main(int argc, char const *argv[])
 {
@@ -160,14 +160,14 @@ int main(int argc, char const *argv[])
 	string markName = argv[2];
 
 	if ( argc>=5 )
-		interarrival_time = atoi(argv[4]);
-	else
-		interarrival_time = 10;
-
-	if ( argc==6 )
-		imageNumber = atoi(argv[5]);
+		imageNumber = atoi(argv[4]);
 	else
 		imageNumber = 100;
+
+	if ( argc==6 )
+		interarrival_time = atoi(argv[5]);
+	else
+		interarrival_time = 10;
 
 
 	// list file in input folder
