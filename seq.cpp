@@ -78,63 +78,68 @@ int main(int argc, char const *argv[])
 
 	// get the image from the folder
 	vector<CImg<unsigned char> *> imageToMark;
+	vector<unsigned char *> imageDataToMark;
 
 	for (int i = 0; i < imageNumber ; ++i) {
 		CImg<unsigned char> *image = new CImg<unsigned char>();
 		image->load( imgStream[0].c_str() );						// change it with "j" to load different images
 		imageToMark.push_back(image);
+		imageDataToMark.push_back(image->data());
 	}
 
 	// SEQUENTIAL CODE
 
 	CImg<unsigned char> markSeq(mark.c_str());
-
-	auto start   = std::chrono::high_resolution_clock::now();
+	unsigned char *ptrMark=markSeq.data();
 
 	int heightOffset, widthOffset;
 	int heightImage, widthImage, heightMark, widthMark;
 	int greyValue, avgGreyValue;
+	int pixNmb;
 
 	// extract information about images
 	heightMark = markSeq.height();
 	widthMark = markSeq.width();
 
+	pixNmb=heightMark*widthMark;
+
 	// initialize the output path
 	string path="markedImage/img_";
+
+	auto start   = std::chrono::high_resolution_clock::now();
 
 	for (int i = 0; i < imageToMark.size(); ++i)
 	{
 		// loop over the pixels of the image which need to be marked
-		for ( int y = 0 ; y < heightMark ; y++ ) {
-			for ( int x = 0 ; x < widthMark ; x++ ) {
-				// the marker could be not completely B&W, so use a threshold to identify black pixels
-				if ( markSeq(x,y,0) < 50 ) 
-				{
-					greyValue = ((*imageToMark[i])(x,y,0,0) + (*imageToMark[i])(x,y,0,1) + (*imageToMark[i])(x,y,0,2) )/3;
+		for ( int x = 0 ; x < pixNmb ; x++ ) {
+			// the marker could be not completely B&W, so use a threshold to identify black pixels
+			if ( *(ptrMark+x* sizeof(unsigned char)) < 50 ) 
+			{
+				greyValue = (*(imageDataToMark[i]+ (x)* sizeof(unsigned char) ) + *(imageDataToMark[i]+ (x + pixNmb)* sizeof(unsigned char) ) 
+					+ *(imageDataToMark[i]+ (x + pixNmb*2)* sizeof(unsigned char) ) )/3;
 
-					avgGreyValue = (greyValue+markSeq(x,y,0))/2;
+				avgGreyValue = (greyValue+*(ptrMark+x* sizeof(unsigned char)) )/2;
 
-					(*imageToMark[i])(x,y,0,0) = avgGreyValue;
-					(*imageToMark[i])(x,y,0,1) = avgGreyValue;
-					(*imageToMark[i])(x,y,0,2) = avgGreyValue;
-				
-				}
+				*(imageDataToMark[i]+ (x)* sizeof(unsigned char) ) = avgGreyValue;
+				*(imageDataToMark[i]+ (x + pixNmb)* sizeof(unsigned char) ) = avgGreyValue;
+				*(imageDataToMark[i]+ (x + pixNmb*2)* sizeof(unsigned char) ) = avgGreyValue;
+			
 			}
 		}
 
 		
 		path +=to_string(i)+"_Seq.jpg";
 
-		//imageToMark[i]->save(path.c_str());
+		imageToMark[i]->save(path.c_str());
 
-		// free memory
-		delete imageToMark[i];
-
-		path="";
+		path="markedImage/img_";
 	}
 
 	auto elapsed = std::chrono::high_resolution_clock::now() - start;
     auto msec    = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+
+	for (int i = 0; i < imageNumber; ++i)
+    	delete imageToMark[i];
 
   	cout << "Sequential time: " << msec << "ms" << " for " << imageNumber << " images! (saving time is considered)" << endl;
 

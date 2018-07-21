@@ -67,8 +67,6 @@ INPUT:
 	- number of workers
 	- vector of pointer to the array of pixels of the images
 	- vector of pointer to the images
-Calculate the information about the partition of the image.
-Only once push information to worker.
 
 For each images:
 	wait eventually a fixed time to emulate the inter-arrival time of the stream 
@@ -102,6 +100,7 @@ struct Scatter_Map: ff_node_t<char,taskWorker> {
 /* 	WORKERS
 INPUT:
 	- infoChunk, information about its own chunk
+	- index, integer to define 
 Pop image from his own queue and process it
 Push the number of the image processed and its pointer, the numbeer is needed to identify that image
 */
@@ -177,6 +176,7 @@ struct Worker_map: ff_node_t<taskWorker,taskGather> {
 /* GATHER
 INPUT:
 	- number of worker
+	- vector to emulate the map
 In the main was created an array to emulate a map (ff have some conflict with the library map) (eg an hashtable)
 Pop the result from the workers,
 	if the task is not NULL
@@ -238,8 +238,8 @@ USAGE:
 		- water mark name with extension						->markName
 		- number of worker 										->nw
 	Optional:
-		- inter-arrival time of the stream 	(default:10us)		->interarrival_time
 		- image number 						(default:100)		->imageNumber
+		- inter-arrival time of the stream 	(default:10us)		->interarrival_time
 List the existing file with ".jpg" extension in the input folder.
 Load sequentially images from the list of file.
 Load nw marker for the workers.
