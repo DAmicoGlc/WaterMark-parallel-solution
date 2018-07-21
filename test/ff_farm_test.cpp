@@ -38,6 +38,7 @@ int findJPG(string check) {
 }
 
 typedef struct {
+	CImg<unsigned char> *ptrImage;
 	unsigned char * image;
 	int index;
 } task;
@@ -47,24 +48,26 @@ typedef struct {
 INPUT:
 	- number of workers
 	- vector of image
+	- vector of array of pixel
 Push the images in the queue wasting a fixes time to emulate the inter-arrival time of the stream.
 Push a number of NULL equal to the number of workers to notify the enf of stream
 */
 struct Emitter_farm: ff_node_t<char,task> {
 
-	Emitter_farm(vector<unsigned char *> imgStream, int nw):imgStream(imgStream),nw(nw) { }
+	Emitter_farm(vector<unsigned char *> imgDataStream,vector<CImg<unsigned char> *> imgStream, int nw):imgDataStream(imgDataStream),imgStream(imgStream),nw(nw) { }
 
 	task *svc(char *){
 		for (int i = 0; i < imgStream.size(); ++i) {
 			active_delay(interarrival_time);
-			task *imageInfo=new task{imgStream[i],i};
+			task *imageInfo=new task{imgStream[i],imgDataStream[i],i};
 			ff_send_out(imageInfo);
 		}
 		return EOS;
 	}
 
 	int nw;
-	vector<unsigned char *> imgStream;
+	vector<unsigned char *> imgDataStream;
+	vector<CImg<unsigned char>*> imgStream;
 };
 
 /* WORKERS
@@ -114,7 +117,7 @@ struct Worker_farm: ff_node_t<task,char> {
 
 			path +=to_string(imageInfo->index)+".jpg";
 
-			//(imageInfo->image)->save_jpeg(path.c_str());
+			//(imageInfo->ptrImage)->save_jpeg(path.c_str());
 
 			auto elapsedWorker = std::chrono::high_resolution_clock::now() - startWorker;
 			auto usecWorker    = std::chrono::duration_cast<std::chrono::microseconds>(elapsedWorker).count();
@@ -214,14 +217,15 @@ int main(int argc, char const *argv[])
 	imgDataVector.push_back(image->data());
 
 	// load image form folder
-	for ( int j=1 ; j<imageNumber ; j++ ) {
+	for ( int j=0 ; j<imageNumber ; j++ ) {
 
-		CImg<unsigned char> *image = new CImg<unsigned char>((*imgVector[0]));
+		CImg<unsigned char> *image = new CImg<unsigned char>();
 
-		imgVector.push_back(image);
+		image->load(imgStream[0].c_str());						// change it with "j" to load different images
 
 		imgDataVector.push_back(image->data());
 
+		imgVector.push_back(image);
 	}
 
 	// load water mark
@@ -239,7 +243,7 @@ int main(int argc, char const *argv[])
 	auto start = std::chrono::high_resolution_clock::now();
 
 	// create the emitter node
-	Emitter_farm emitter(imgDataVector,nw);
+	Emitter_farm emitter(imgDataVector,imgVector,nw);
 
 	// create workers node
 	vector<ff_node *> W;

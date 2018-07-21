@@ -5,7 +5,7 @@
 #include <ctime>
 #include <vector>
 #include <thread>
-#include <test/ff/farm.hpp>
+#include <ff/farm.hpp>
 #define cimg_use_jpeg 1
 #include "CImg.h"
 #include "util.cpp"
