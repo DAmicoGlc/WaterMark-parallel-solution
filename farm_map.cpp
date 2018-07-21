@@ -128,11 +128,6 @@ void worker(int index,workerInfoPtr infoChunk,int mapID) {
 			// propagate EOS
 			gatherQueue[mapID].push( make_pair(0,get<1>(ptrTuple)) );
 
-			auto elapsedWorker = std::chrono::high_resolution_clock::now() - startWorker;
-		    auto usecWorker    = std::chrono::duration_cast<std::chrono::microseconds>(elapsedWorker).count();
-
-		    workerTime[index]=usecWorker;
-
 			return;
 		}
 
@@ -420,6 +415,8 @@ int main(int argc, char const *argv[])
 		}
 
 	}
+
+	auto start = std::chrono::high_resolution_clock::now();
 
 	// allocate memory for the worker queues
 	workerQueue = new queue<tuple<unsigned char *,CImg<unsigned char> *,int> >[nw];
