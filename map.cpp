@@ -59,8 +59,6 @@ INPUT:
 	- number of workers
 	- vector of pointer to the array of pixels of the images
 	- vector of pointer to the images
-Calculate the information about the partition of the image.
-Only once push information to worker.
 For each images:
 	Push the pointer to the pixels array and the pointer to the image in each queues waiting 
 		eventually a fixed time to emulate the inter-arrival time othe stream 

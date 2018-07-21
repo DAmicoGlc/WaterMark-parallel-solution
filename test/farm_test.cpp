@@ -42,6 +42,7 @@ int findJPG(string check) {
 
 // struct of information pass between stages
 typedef struct {
+	CImg<unsigned char> *ptrImage;
 	unsigned char * image;
 	int index;
 } task;
@@ -57,11 +58,11 @@ INPUT:
 Push the images in the queue wasting a fixes time to emulate the inter-arrival time of the stream.
 Push a number of NULL equal to the number of workers to notify the enf of stream
 */
-void emitter(int nw,vector<unsigned char *> imgVector) {
+void emitter(int nw,vector<unsigned char *> imgDataVector,vector<CImg<unsigned char> *> imgVector) {
 
 	for ( int j=0 ; j<imgVector.size() ; j++ ) {
 		active_delay(interarrival_time);
-		task *infoImage=new task{imgVector[j],j};
+		task *infoImage=new task{imgVector[j],imgDataVector[j],j};
 		workerQueue.push(infoImage);
 	}
 
@@ -121,7 +122,7 @@ void worker(CImg<unsigned char> * markImg,int index) {
 		
 		path +=to_string(imageInfo->index)+".jpg";
 
-		//(imageInfo->image)->save_jpeg(path.c_str());
+		//(imageInfo->ptrImage)->save_jpeg(path.c_str());
 
 		path="markedImageFarm/img_";
 
@@ -242,7 +243,7 @@ int main(int argc, char const *argv[])
 	auto start = std::chrono::high_resolution_clock::now();
 
 	//Create the emitter thread
-	thread emitterThread(emitter,nw,imgDataVector);
+	thread emitterThread(emitter,nw,imgDataVector,imgVector);
 	vector<thread> workers;
 
 	//Create worker threads
